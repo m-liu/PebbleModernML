@@ -9,9 +9,10 @@ static GBitmap *background_image_container;
 static Layer *minute_display_layer;
 static Layer *hour_display_layer;
 static Layer *center_display_layer;
-static Layer *second_display_layer;
+//static Layer *second_display_layer;
 static TextLayer *date_layer;
-static char date_text[] = "Wed 13 ";
+static char date_text[] = "Wed Sept 13 ";
+static char ref_time_text[] = "12:12:12 pm     ";
 static bool bt_ok = false;
 static uint8_t battery_level;
 static bool battery_plugged;
@@ -72,11 +73,12 @@ void handle_timer(void* vdata) {
 			layer_mark_dirty(minute_display_layer);
 			timer_handle = app_timer_register(50 /* milliseconds */,
 					&handle_timer, &my_cookie);
-		} else if (init_anim == ANIM_SECONDS) {
-			layer_mark_dirty(second_display_layer);
-			timer_handle = app_timer_register(50 /* milliseconds */,
-					&handle_timer, &my_cookie);
+//		} else if (init_anim == ANIM_SECONDS) {
+//			layer_mark_dirty(second_display_layer);
+//			timer_handle = app_timer_register(50 /* milliseconds */,
+//					&handle_timer, &my_cookie);
 		}
+
 	}
 
 }
@@ -191,7 +193,7 @@ void draw_date() {
 	time_t now = time(NULL);
 	struct tm *t = localtime(&now);
 
-	strftime(date_text, sizeof(date_text), "%a %d", t);
+	strftime(date_text, sizeof(date_text), "%a %b %d", t);
 
 	text_layer_set_text(date_layer, date_text);
 }
@@ -219,10 +221,12 @@ void battery_state_handler(BatteryChargeState charge) {
 	battery_level = charge.charge_percent;
 	battery_plugged = charge.is_plugged;
 	layer_mark_dirty(battery_layer);
+	/*
 	if (!battery_plugged && battery_level < 20)
 		conserve_power(true);
 	else
 		conserve_power(false);
+	*/
 }
 
 /*
@@ -311,11 +315,12 @@ void init() {
 			&center_display_layer_update_callback);
 	layer_add_child(window_layer, center_display_layer);
 
+	/*
 	second_display_layer = layer_create(GRECT_FULL_WINDOW);
 	layer_set_update_proc(second_display_layer,
 			&second_display_layer_update_callback);
 	layer_add_child(window_layer, second_display_layer);
-
+*/
 	// Configurable inverse
 #ifdef INVERSE
 	full_inverse_layer = inverter_layer_create(GRECT_FULL_WINDOW);
@@ -338,7 +343,7 @@ void deinit() {
 	layer_destroy(minute_display_layer);
 	layer_destroy(hour_display_layer);
 	layer_destroy(center_display_layer);
-	layer_destroy(second_display_layer);
+	//layer_destroy(second_display_layer);
 	layer_destroy(battery_layer);
 	layer_destroy(bt_layer);
 
@@ -375,8 +380,9 @@ void handle_tick(struct tm *tick_time, TimeUnits units_changed) {
 			}
 		}
 
-		layer_mark_dirty(second_display_layer);
+	//	layer_mark_dirty(second_display_layer);
 	}
+	
 }
 
 void conserve_power(bool conserve) {
@@ -386,11 +392,11 @@ void conserve_power(bool conserve) {
 	if (conserve) {
 		tick_timer_service_unsubscribe();
 		tick_timer_service_subscribe(MINUTE_UNIT, &handle_tick);
-		layer_set_hidden(second_display_layer, true);
+	//	layer_set_hidden(second_display_layer, true);
 	} else {
 		tick_timer_service_unsubscribe();
 		tick_timer_service_subscribe(SECOND_UNIT, &handle_tick);
-		layer_set_hidden(second_display_layer, false);
+	//	layer_set_hidden(second_display_layer, false);
 	}
 }
 
@@ -398,20 +404,23 @@ void conserve_power(bool conserve) {
 /* Initialize listeners to show and hide Quick Tap Plus as well as update data */
 void qtp_setup() {
 	qtp_is_showing = false;
-	accel_tap_service_subscribe(&qtp_tap_handler);
 	qtp_bluetooth_image = gbitmap_create_with_resource(RESOURCE_ID_QTP_IMG_BT);
 	qtp_battery_image = gbitmap_create_with_resource(RESOURCE_ID_QTP_IMG_BAT);
 	
 	if (qtp_is_show_weather()) {
 		qtp_setup_app_message();
 	}
+	//ml: register the tap service after we setup the app message!?
+	accel_tap_service_subscribe(&qtp_tap_handler);
 }
 
 /* Handle taps from the hardware */
 void qtp_tap_handler(AccelAxisType axis, int32_t direction) {
 	if (qtp_is_showing) {
+		APP_LOG(APP_LOG_LEVEL_DEBUG, "QTP: tap handler: HIDING QTP");
 		qtp_hide();
 	} else {
+		APP_LOG(APP_LOG_LEVEL_DEBUG, "QTP: tap handler: SHOWING QTP");
 		qtp_show();
 	}
 	qtp_is_showing = !qtp_is_showing;
@@ -441,12 +450,15 @@ void qtp_update_battery_status(bool mark_dirty) {
 
 /* Update the weather icon. Destroy the current one if necessary */
 void qtp_update_weather_icon(int icon_index, bool remove_old, bool mark_dirty) {
-	const int icon_id = QTP_WEATHER_ICONS[icon_index];
-	qtp_weather_icon = gbitmap_create_with_resource(icon_id);
-	bitmap_layer_set_bitmap(qtp_weather_icon_layer, qtp_weather_icon);
+	//ml: bug was here. 
+	//need to destroy old icon FIRST before we create a new one. Otherwise 
+	//we are unable to draw the new icon
 	if (remove_old) {
 		gbitmap_destroy(qtp_weather_icon);
 	}
+	const int icon_id = QTP_WEATHER_ICONS[icon_index];
+	qtp_weather_icon = gbitmap_create_with_resource(icon_id);
+	bitmap_layer_set_bitmap(qtp_weather_icon_layer, qtp_weather_icon);
 	if (mark_dirty) {
 		layer_mark_dirty(bitmap_layer_get_layer(qtp_weather_icon_layer));
 	}
@@ -516,10 +528,23 @@ static void qtp_sync_changed_callback(const uint32_t key, const Tuple* new_tuple
 				text_layer_set_text(qtp_temp_layer, new_tuple->value->cstring);
 			}
 			break;
+			/*
 		case QTP_WEATHER_DESC_KEY:
 			APP_LOG(APP_LOG_LEVEL_DEBUG, "QTP: weather desc received: %s", new_tuple->value->cstring);
 			if (qtp_is_showing) {
 				text_layer_set_text(qtp_weather_desc_layer, new_tuple->value->cstring);
+			}
+			break;
+			*/
+		case QTP_WEATHER_CITY_KEY:
+			APP_LOG(APP_LOG_LEVEL_DEBUG, "QTP: weather city received: %s", new_tuple->value->cstring);
+			//ml: test: refresh time
+			time_t now = time(NULL);
+			struct tm *t = localtime(&now);
+			strftime(ref_time_text, sizeof(ref_time_text), "%r", t);
+			if (qtp_is_showing) {
+				//text_layer_set_text(qtp_weather_desc_layer, new_tuple->value->cstring); //FIXME
+				text_layer_set_text(qtp_weather_desc_layer, ref_time_text);
 			}
 			break;
 		case QTP_WEATHER_ICON_KEY:
@@ -547,6 +572,7 @@ static void qtp_sync_error_callback(DictionaryResult dict_error, AppMessageResul
 
 /* Auto-hide the window after a certain time */
 void qtp_timeout() {
+		APP_LOG(APP_LOG_LEVEL_DEBUG, "QTP: qtp_timout()");
 	qtp_hide();
 	qtp_is_showing = false;
 }
@@ -574,9 +600,11 @@ void qtp_init() {
 		qtp_weather_desc_layer = text_layer_create(desc_frame);
 		text_layer_set_font(qtp_weather_desc_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD));
 		text_layer_set_text_alignment(qtp_weather_desc_layer, GTextAlignmentLeft);
-		const Tuple *desc_tuple = app_sync_get(&qtp_sync, QTP_WEATHER_DESC_KEY);
+		//const Tuple *desc_tuple = app_sync_get(&qtp_sync, QTP_WEATHER_DESC_KEY);
+		const Tuple *desc_tuple = app_sync_get(&qtp_sync, QTP_WEATHER_CITY_KEY);
 		if (desc_tuple != NULL) {
-			text_layer_set_text(qtp_weather_desc_layer, desc_tuple->value->cstring);
+		//	text_layer_set_text(qtp_weather_desc_layer, desc_tuple->value->cstring);
+			text_layer_set_text(qtp_weather_desc_layer, ref_time_text);
 		}
 		layer_add_child(window_get_root_layer(qtp_window), text_layer_get_layer(qtp_weather_desc_layer));
 
@@ -648,6 +676,7 @@ void qtp_init() {
 
 /* Deallocate QTPlus items when window is hidden */
 void qtp_deinit() {
+	APP_LOG(APP_LOG_LEVEL_DEBUG, "QTP: qtp_deinit");
 	text_layer_destroy(qtp_battery_text_layer);
 	text_layer_destroy(qtp_bluetooth_text_layer);
 	bitmap_layer_destroy(qtp_bluetooth_image_layer);
@@ -682,6 +711,7 @@ void qtp_app_deinit() {
 void qtp_show() {
 	qtp_init();
 	window_stack_push(qtp_window, true);
+	APP_LOG(APP_LOG_LEVEL_DEBUG, "QTP: qtp_show()");
 	if (qtp_is_autohide()) {
 		qtp_hide_timer = app_timer_register(QTP_WINDOW_TIMEOUT, qtp_timeout, NULL);
 	}
@@ -744,6 +774,7 @@ int main(void) {
 	tick_timer_service_subscribe(SECOND_UNIT, &handle_tick);
 	bluetooth_connection_service_subscribe(&bt_connection_handler);
 	battery_state_service_subscribe	(&battery_state_handler);
+	conserve_power(true);
 	app_event_loop();
 	deinit();
 }

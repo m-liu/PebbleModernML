@@ -186,7 +186,8 @@
 			}
 			weather_interval = setInterval(function() {
 				goWeather();
-			}, 15*60*1000);
+			}, 15*60*1000);//ml 
+			//}, 10*1000);
 		};
 
 		console.log("Initial weather request");
