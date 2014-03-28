@@ -12,7 +12,9 @@ static Layer *center_display_layer;
 //static Layer *second_display_layer;
 static TextLayer *date_layer;
 static char date_text[] = "Wed Sept 13 ";
-static char ref_time_text[] = "12:12:12 pm     ";
+static char loc_reftime_text[50];
+static char reftime_text[] = "00:00:00 am   ";
+static char full_dt_text[] = "Thu Aug 23 14:55:02 2001        ";
 static bool bt_ok = false;
 static uint8_t battery_level;
 static bool battery_plugged;
@@ -480,9 +482,12 @@ void qtp_update_bluetooth_status(bool mark_dirty) {
 
 /* Update the text layer for the clock */
 void qtp_update_time(bool mark_dirty) {
-	static char time_text[10];
-	clock_copy_time_string(time_text, sizeof(time_text));
-	text_layer_set_text(qtp_time_layer, time_text);
+	//static char time_text[10];
+	//clock_copy_time_string(time_text, sizeof(time_text));
+	time_t now = time(NULL);
+	struct tm *t = localtime(&now);
+	strftime(full_dt_text, sizeof(full_dt_text), "%a %b %d %r", t);
+	text_layer_set_text(qtp_time_layer, full_dt_text);
 
 	if (mark_dirty) {
 		layer_mark_dirty(text_layer_get_layer(qtp_time_layer));
@@ -537,14 +542,16 @@ static void qtp_sync_changed_callback(const uint32_t key, const Tuple* new_tuple
 			break;
 			*/
 		case QTP_WEATHER_CITY_KEY:
-			APP_LOG(APP_LOG_LEVEL_DEBUG, "QTP: weather city received: %s", new_tuple->value->cstring);
-			//ml: test: refresh time
+			APP_LOG(APP_LOG_LEVEL_DEBUG, "QTP: weather loc and time received:");
 			time_t now = time(NULL);
 			struct tm *t = localtime(&now);
-			strftime(ref_time_text, sizeof(ref_time_text), "%r", t);
+			strftime(loc_reftime_text, sizeof(reftime_text), "%r ", t);
+			strcat(loc_reftime_text, new_tuple->value->cstring);
+			APP_LOG(APP_LOG_LEVEL_DEBUG, "QTP: weather loc and time received: %s", loc_reftime_text);
+
 			if (qtp_is_showing) {
 				//text_layer_set_text(qtp_weather_desc_layer, new_tuple->value->cstring); //FIXME
-				text_layer_set_text(qtp_weather_desc_layer, ref_time_text);
+				text_layer_set_text(qtp_weather_desc_layer, loc_reftime_text);
 			}
 			break;
 		case QTP_WEATHER_ICON_KEY:
@@ -588,7 +595,7 @@ void qtp_init() {
 		qtp_time_layer = text_layer_create(time_frame);
 		qtp_update_time(false);
 		text_layer_set_text_alignment(qtp_time_layer, GTextAlignmentCenter);
-		text_layer_set_font(qtp_time_layer, fonts_get_system_font(FONT_KEY_GOTHIC_28));
+		text_layer_set_font(qtp_time_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18));
 		layer_add_child(window_get_root_layer(qtp_window), text_layer_get_layer(qtp_time_layer));
 	}
 
@@ -596,15 +603,16 @@ void qtp_init() {
 	if (qtp_is_show_weather()) {
 
 		/* Weather description layer */
-		GRect desc_frame = GRect( QTP_PADDING_X + QTP_WEATHER_SIZE + 5, qtp_weather_y() + QTP_WEATHER_SIZE, QTP_SCREEN_WIDTH - QTP_PADDING_X, QTP_WEATHER_SIZE);
+		//GRect desc_frame = GRect( QTP_PADDING_X + QTP_WEATHER_SIZE + 5, qtp_weather_y() + QTP_WEATHER_SIZE, QTP_SCREEN_WIDTH - QTP_PADDING_X, QTP_WEATHER_SIZE);
+		GRect desc_frame = GRect( 0, qtp_weather_y() + QTP_WEATHER_SIZE, QTP_SCREEN_WIDTH - QTP_PADDING_X, QTP_WEATHER_SIZE);
 		qtp_weather_desc_layer = text_layer_create(desc_frame);
-		text_layer_set_font(qtp_weather_desc_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD));
-		text_layer_set_text_alignment(qtp_weather_desc_layer, GTextAlignmentLeft);
+		text_layer_set_font(qtp_weather_desc_layer, fonts_get_system_font(FONT_KEY_GOTHIC_14));
+		text_layer_set_text_alignment(qtp_weather_desc_layer, GTextAlignmentRight);
 		//const Tuple *desc_tuple = app_sync_get(&qtp_sync, QTP_WEATHER_DESC_KEY);
 		const Tuple *desc_tuple = app_sync_get(&qtp_sync, QTP_WEATHER_CITY_KEY);
 		if (desc_tuple != NULL) {
 		//	text_layer_set_text(qtp_weather_desc_layer, desc_tuple->value->cstring);
-			text_layer_set_text(qtp_weather_desc_layer, ref_time_text);
+			text_layer_set_text(qtp_weather_desc_layer, loc_reftime_text);
 		}
 		layer_add_child(window_get_root_layer(qtp_window), text_layer_get_layer(qtp_weather_desc_layer));
 
